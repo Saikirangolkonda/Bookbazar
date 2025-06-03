@@ -146,11 +146,36 @@ def get_local_time():
     india_tz = pytz.timezone('Asia/Kolkata')
     return datetime.now(india_tz).strftime("%Y-%m-%d %H:%M:%S IST")
 
+def test_sns_connection():
+    """Test SNS connection and permissions"""
+    try:
+        print("DEBUG: Testing SNS connection...")
+        response = sns.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject='Test Notification - BookBazar',
+            Message='This is a test message to verify SNS connectivity.'
+        )
+        print(f"DEBUG: Test SNS Response: {response}")
+        logger.info(f"SNS test successful: {response}")
+        return True
+    except ClientError as e:
+        print(f"DEBUG: SNS Test failed with ClientError: {e}")
+        logger.error(f"SNS test failed: {e}")
+        return False
+    except Exception as e:
+        print(f"DEBUG: SNS Test failed with Exception: {e}")
+        logger.error(f"SNS test failed with unexpected error: {e}")
+        return False
+
 def send_order_confirmation_notification(username, cart_items, customer_info, total_amount):
     """Send detailed order confirmation notification ONLY when order is placed"""
     try:
+        print(f"DEBUG: Starting to send notification for user: {username}")
+        logger.info(f"Starting to send notification for user: {username}")
+        
         # Generate order timestamp in Indian time
         order_time = get_local_time()
+        print(f"DEBUG: Order time: {order_time}")
         
         # Build detailed notification message
         message = f"""
@@ -197,16 +222,31 @@ def send_order_confirmation_notification(username, cart_items, customer_info, to
 Thank you for shopping with BookBazar! 📚✨
 """
 
+        print(f"DEBUG: SNS Topic ARN: {SNS_TOPIC_ARN}")
+        print(f"DEBUG: Message length: {len(message)}")
+        
         # Send the notification
-        sns.publish(
+        response = sns.publish(
             TopicArn=SNS_TOPIC_ARN,
             Subject=f'📚 Order Confirmed - BookBazar (${total_amount:.2f})',
             Message=message
         )
-        logger.info(f"Order confirmation notification sent for user: {username}")
+        
+        print(f"DEBUG: SNS Response: {response}")
+        logger.info(f"Order confirmation notification sent successfully for user: {username}")
+        logger.info(f"SNS Response: {response}")
+        return True
         
     except ClientError as e:
-        logger.error(f"Error sending order confirmation notification: {e}")
+        print(f"DEBUG: ClientError occurred: {e}")
+        logger.error(f"ClientError sending order confirmation notification: {e}")
+        logger.error(f"Error Code: {e.response['Error']['Code']}")
+        logger.error(f"Error Message: {e.response['Error']['Message']}")
+        return False
+    except Exception as e:
+        print(f"DEBUG: General Exception occurred: {e}")
+        logger.error(f"Unexpected error sending order confirmation notification: {e}")
+        return False
 
 def find_book_by_id(book_id):
     """Find a book by its ID"""
@@ -215,6 +255,20 @@ def find_book_by_id(book_id):
         if book['id'] == book_id:
             return book
     return None
+
+# Test SNS route (for debugging)
+@app.route('/test_sns')
+def test_sns():
+    if 'username' not in session:
+        return "Please login first"
+    
+    success = test_sns_connection()
+    if success:
+        flash('SNS test successful! Notifications should work.', 'success')
+    else:
+        flash('SNS test failed! Check AWS configuration.', 'error')
+    
+    return redirect(url_for('books'))
 
 # Home route - show index.html landing page
 @app.route('/')
@@ -425,7 +479,14 @@ def process_checkout():
     }
     
     # Send ONLY order confirmation notification (not cart updates)
-    send_order_confirmation_notification(username, cart_items, customer_info, total)
+    notification_sent = send_order_confirmation_notification(username, cart_items, customer_info, total)
+    
+    if notification_sent:
+        print("DEBUG: Notification sent successfully")
+        flash('Order placed successfully! Confirmation notification sent.', 'success')
+    else:
+        print("DEBUG: Notification failed to send")
+        flash('Order placed successfully! (Note: Notification delivery may be delayed)', 'warning')
     
     # Clear cart after successful order
     update_user_cart(username, [])
