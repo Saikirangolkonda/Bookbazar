@@ -17,10 +17,15 @@ logger = logging.getLogger(__name__)
 AWS_REGION = 'ap-south-1'
 SNS_TOPIC_ARN = 'arn:aws:sns:ap-south-1:686255965861:bookbazartopic'
 
+# SES Configuration - Replace with your verified email domain
+SES_FROM_EMAIL = 'bookbazar@yourdomain.com'  # Must be verified in SES
+# Note: For production, verify your domain in SES or verify individual email addresses
+
 # Initialize AWS clients
 try:
     dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
     sns = boto3.client('sns', region_name=AWS_REGION)
+    ses = boto3.client('ses', region_name=AWS_REGION)
     
     # Get table references
     users_table = dynamodb.Table('users')
@@ -140,23 +145,21 @@ def update_user_cart(username, cart_items):
         return False
 
 def send_notification(subject, message, email=None):
-    """Send SNS notification"""
+    """Send SNS notification or SES email"""
     try:
         if email:
-            # Send direct email notification
-            sns.publish(
-                Subject=subject,
-                Message=message,
-                MessageAttributes={
-                    'email': {
-                        'DataType': 'String',
-                        'StringValue': email
-                    }
+            # Send direct email using SES
+            ses.send_email(
+                Source=SES_FROM_EMAIL,
+                Destination={'ToAddresses': [email]},
+                Message={
+                    'Subject': {'Data': subject},
+                    'Body': {'Text': {'Data': message}}
                 }
             )
-            logger.info(f"Email notification sent to: {email}")
+            logger.info(f"Email sent to: {email}")
         else:
-            # Send to topic (for admin notifications)
+            # Send to SNS topic (for admin notifications)
             sns.publish(
                 TopicArn=SNS_TOPIC_ARN,
                 Subject=subject,
@@ -165,6 +168,17 @@ def send_notification(subject, message, email=None):
             logger.info(f"Topic notification sent: {subject}")
     except ClientError as e:
         logger.error(f"Error sending notification: {e}")
+        # Fallback: try SNS direct publish if SES fails
+        if email:
+            try:
+                sns.publish(
+                    Subject=f"{subject} - Customer: {email}",
+                    Message=f"Customer Email: {email}\n\n{message}",
+                    TopicArn=SNS_TOPIC_ARN
+                )
+                logger.info(f"Fallback SNS notification sent for {email}")
+            except ClientError as fallback_error:
+                logger.error(f"Fallback notification also failed: {fallback_error}")
 
 def find_book_by_id(book_id):
     """Find a book by its ID"""
