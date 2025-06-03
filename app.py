@@ -139,15 +139,30 @@ def update_user_cart(username, cart_items):
         logger.error(f"Error updating cart for {username}: {e}")
         return False
 
-def send_notification(subject, message):
+def send_notification(subject, message, email=None):
     """Send SNS notification"""
     try:
-        sns.publish(
-            TopicArn=SNS_TOPIC_ARN,
-            Subject=subject,
-            Message=message
-        )
-        logger.info(f"Notification sent: {subject}")
+        if email:
+            # Send direct email notification
+            sns.publish(
+                Subject=subject,
+                Message=message,
+                MessageAttributes={
+                    'email': {
+                        'DataType': 'String',
+                        'StringValue': email
+                    }
+                }
+            )
+            logger.info(f"Email notification sent to: {email}")
+        else:
+            # Send to topic (for admin notifications)
+            sns.publish(
+                TopicArn=SNS_TOPIC_ARN,
+                Subject=subject,
+                Message=message
+            )
+            logger.info(f"Topic notification sent: {subject}")
     except ClientError as e:
         logger.error(f"Error sending notification: {e}")
 
@@ -198,13 +213,6 @@ def register():
         # Register user
         if create_user_in_db(username, password):
             flash('Registration successful! Please login.', 'success')
-            
-            # Send notification about new user registration
-            send_notification(
-                'New User Registration - BookBazar',
-                f'New user registered: {username}'
-            )
-            
             return redirect(url_for('login'))
         else:
             flash('Registration failed. Please try again.', 'error')
@@ -366,8 +374,40 @@ def process_checkout():
     # Process order (in real app, integrate with payment gateway)
     total = sum(item['price'] * item['quantity'] for item in cart_items)
     
-    # Send order notification
-    order_details = f"""
+    # Send order confirmation email to customer
+    customer_message = f"""
+    Dear {name},
+    
+    Thank you for your order at BookBazar!
+    
+    Order Details:
+    Total Amount: ${total:.2f}
+    
+    Items Ordered:
+    """
+    
+    for item in cart_items:
+        customer_message += f"- {item['title']} by {item['author']} x {item['quantity']} = ${item['price'] * item['quantity']:.2f}\n"
+    
+    customer_message += f"""
+    
+    Shipping Address: {address}
+    Payment Method: {payment_method}
+    
+    Your order will be processed within 24 hours.
+    
+    Thank you for shopping with BookBazar!
+    """
+    
+    # Send email notification to customer
+    send_notification(
+        'Order Confirmation - BookBazar',
+        customer_message,
+        email
+    )
+    
+    # Send order notification to admin/topic
+    admin_message = f"""
     New Order Received - BookBazar
     
     Customer: {name}
@@ -380,9 +420,9 @@ def process_checkout():
     """
     
     for item in cart_items:
-        order_details += f"- {item['title']} x {item['quantity']} = ${item['price'] * item['quantity']:.2f}\n"
+        admin_message += f"- {item['title']} x {item['quantity']} = ${item['price'] * item['quantity']:.2f}\n"
     
-    send_notification('New Order - BookBazar', order_details)
+    send_notification('New Order - BookBazar', admin_message)
     
     # Clear cart after successful order
     update_user_cart(username, [])
