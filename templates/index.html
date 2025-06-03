@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BookBazar - Your Online Bookstore</title>
+  <link rel="stylesheet" href="../static/style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+</head>
+<body>
+  <header>
+    <div class="container header-content">
+      <div class="logo">
+        <i class="fas fa-book logo-icon"></i>
+        <h1>BookBazar</h1>
+      </div>
+      <button class="mobile-menu-btn" id="mobileMenuBtn">
+        <i class="fas fa-bars"></i>
+      </button>
+      <nav id="mainNav">
+        <ul>
+          <li><a href="login" class="active">Browse Books</a></li>
+          <li><a href="login" class="login-btn">Login</a></li>
+          <li><a href="register" class="register-btn">Register</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container hero-content">
+      <div class="hero-text">
+        <h1>Discover Your Next Favorite Book</h1>
+        <p>Browse thousands of titles from bestselling novels to rare classics.</p>
+        <div class="hero-buttons">
+          <a href="login" class="btn btn-primary">Explore Books</a>
+          <a href="register" class="btn btn-secondary">Join Now</a>
+        </div>
+      </div>
+      <div class="hero-image-carousel">
+        <div class="hero-slide active">
+          <img src="../static/images/The Great Gatsby.jpg" alt="Book" class="responsive-img">
+        </div>
+        <div class="hero-slide">
+          <img src="../static/images/The Catcher in the Rye.jpeg" alt="Book" class="responsive-img">
+        </div>
+        <div class="hero-slide">
+          <img src="../static/images/Moby Dick.jpeg" alt="Book" class="responsive-img">
+        </div>
+        <div class="hero-slide">
+          <img src="../static/images/The Hobbit.jpeg" alt="Book" class="responsive-img">
+        </div>
+        <div class="hero-nav">
+          <span class="hero-dot active"></span>
+          <span class="hero-dot"></span>
+          <span class="hero-dot"></span>
+          <span class="hero-dot"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Hero Carousel CSS -->
+  <style>
+    .hero-image-carousel {
+      position: relative;
+      overflow: hidden;
+      width: 50%;
+      border-radius: 8px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+    .hero-slide {
+      display: none;
+      width: 100%;
+      transition: opacity 0.5s ease;
+    }
+    .hero-slide.active {
+      display: block;
+      animation: fadeIn 0.3s;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0.4; }
+      to { opacity: 1; }
+    }
+    .hero-nav {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+    }
+    .hero-dot {
+      cursor: pointer;
+      height: 8px;
+      width: 8px;
+      margin: 0 5px;
+      background-color: rgba(255, 255, 255, 0.5);
+      border-radius: 50%;
+      display: inline-block;
+      transition: background-color 0.3s ease;
+    }
+    .hero-dot.active, .hero-dot:hover {
+      background-color: #fff;
+    }
+  </style>
+
+  <!-- Carousel Script -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const heroSlides = document.querySelectorAll('.hero-slide');
+      const heroDots = document.querySelectorAll('.hero-dot');
+      let currentIndex = 0;
+
+      function showSlide(index) {
+        heroSlides.forEach((slide, i) => {
+          slide.classList.toggle('active', i === index);
+          heroDots[i].classList.toggle('active', i === index);
+        });
+      }
+
+      heroDots.forEach((dot, i) => {
+        dot.addEventListener('click', () => {
+          currentIndex = i;
+          showSlide(currentIndex);
+        });
+      });
+
+      setInterval(() => {
+        currentIndex = (currentIndex + 1) % heroSlides.length;
+        showSlide(currentIndex);
+      }, 2000);
+    });
+  </script>
+</body>
+</html>

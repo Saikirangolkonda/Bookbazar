@@ -1,0 +1,152 @@
+[
+  {
+    "id": 1,
+    "title": "The Great Gatsby",
+    "author": "F. Scott Fitzgerald",
+    "price": 12.99,
+    "genre": "Classic Fiction",
+    "year": 1925,
+    "description": "A classic American novel set in the Jazz Age, exploring themes of wealth, love, and the American Dream.",
+    "image": "../static/images/The Great Gatsby.jpg"
+  },
+  {
+    "id": 2,
+    "title": "To Kill a Mockingbird",
+    "author": "Harper Lee",
+    "price": 10.50,
+    "genre": "Southern Gothic",
+    "year": 1960,
+    "description": "A powerful story about racial injustice and childhood in the American South.",
+    "image": "../static/images/To Kill a Mockingbird.jpeg"
+  },
+  {
+    "id": 3,
+    "title": "1984",
+    "author": "George Orwell",
+    "price": 9.75,
+    "genre": "Dystopian",
+    "year": 1949,
+    "description": "A chilling vision of a totalitarian future.",
+    "image": "static/images/1984.jpeg"
+  },
+  {
+    "id": 4,
+    "title": "Pride and Prejudice",
+    "author": "Jane Austen",
+    "price": 8.99,
+    "genre": "Romance",
+    "year": 1813,
+    "description": "A classic novel of manners, love, and societal expectations in Regency England.",
+    "image": "static/images/Pride and Prejudice.jpeg"
+  },
+  {
+    "id": 5,
+    "title": "The Catcher in the Rye",
+    "author": "J.D. Salinger",
+    "price": 11.25,
+    "genre": "Coming-of-Age",
+    "year": 1951,
+    "description": "A controversial yet beloved novel about teenage angst and alienation.",
+    "image": "static/images/The Catcher in the Rye.jpeg"
+  },
+  {
+    "id": 6,
+    "title": "The Hobbit",
+    "author": "J.R.R. Tolkien",
+    "price": 14.00,
+    "genre": "Fantasy",
+    "year": 1937,
+    "description": "A delightful adventure story set in Middle-earth, preceding The Lord of the Rings.",
+    "image": "static/images/The Hobbit.jpeg"
+  },
+  {
+    "id": 7,
+    "title": "Dune",
+    "author": "Frank Herbert",
+    "price": 13.50,
+    "genre": "Science Fiction",
+    "year": 1965,
+    "description": "An epic science fiction saga about politics, religion, and ecology on a desert planet.",
+    "image": "static/images/Dune.jpeg"
+  },
+  {
+    "id": 8,
+    "title": "Moby Dick",
+    "author": "Herman Melville",
+    "price": 10.99,
+    "genre": "Adventure",
+    "year": 1851,
+    "description": "The epic tale of Captain Ahab's obsessive pursuit of the white whale.",
+    "image": "static/images/Moby Dick.jpeg"
+  },
+  {
+    "id": 9,
+    "title": "The Lord of the Rings",
+    "author": "J.R.R. Tolkien",
+    "price": 25.00,
+    "genre": "Fantasy",
+    "year": 1954,
+    "description": "A high-fantasy epic chronicling the quest to destroy the One Ring.",
+    "image": "static/images/The Lord of the Rings.jpeg"
+  },
+  {
+    "id": 10,
+    "title": "Frankenstein",
+    "author": "Mary Shelley",
+    "price": 9.50,
+    "genre": "Gothic Fiction",
+    "year": 1818,
+    "description": "A groundbreaking novel exploring themes of creation, ambition, and humanity.",
+    "image": "static/images/Frankenstein.jpg"
+  },
+  {
+    "id": 11,
+    "title": "The Alchemist",
+    "author": "Paulo Coelho",
+    "price": 11.99,
+    "genre": "Philosophical Fiction",
+    "year": 1988,
+    "description": "A symbolic tale about a shepherd boy's journey to find his destiny.",
+    "image": "static/images/The Alchemist.jpeg"
+  },
+  {
+    "id": 12,
+    "title": "Sapiens: A Brief History of Humankind",
+    "author": "Yuval Noah Harari",
+    "price": 15.75,
+    "genre": "Non-Fiction",
+    "year": 2014,
+    "description": "A sweeping history of Homo sapiens from the Stone Age to the 21st century.",
+    "image": "static/images/Brief History of Humankind.jpeg"
+  },
+  {
+    "id": 13,
+    "title": "Educated",
+    "author": "Tara Westover",
+    "price": 13.00,
+    "genre": "Memoir",
+    "year": 2018,
+    "description": "An inspiring memoir about a young woman's journey from a rural Idaho upbringing to Cambridge University.",
+    "image": "static/images/Educated.jpeg"
+  },
+  {
+    "id": 14,
+    "title": "Where the Crawdads Sing",
+    "author": "Delia Owens",
+    "price": 14.50,
+    "genre": "Mystery",
+    "year": 2018,
+    "description": "A captivating story blending a coming-of-age narrative with a murder mystery.",
+    "image": "static/images/Where the Crawdads Sing.jpeg"
+  },
+  {
+    "id": 15,
+    "title": "Circe",
+    "author": "Madeline Miller",
+    "price": 12.75,
+    "genre": "Mythology",
+    "year": 2018,
+    "description": "A retelling of the myth of Circe, the powerful witch from Greek mythology.",
+    "image": "static/images/Circe.jpeg"
+  }
+]
