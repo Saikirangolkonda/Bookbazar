@@ -5,6 +5,7 @@ import boto3
 from botocore.exceptions import ClientError
 from decimal import Decimal
 import logging
+from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_change_in_production'
@@ -151,6 +152,120 @@ def send_notification(subject, message):
     except ClientError as e:
         logger.error(f"Error sending notification: {e}")
 
+def send_order_confirmation_notification(username, cart_items, customer_info, total_amount):
+    """Send detailed order confirmation notification"""
+    try:
+        # Generate order timestamp
+        order_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Build detailed notification message
+        message = f"""
+📚 BOOK ORDER CONFIRMED - BookBazar 📚
+
+🎉 Order Details:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📅 Order Date: {order_time}
+👤 Customer: {customer_info['name']}
+📧 Email: {customer_info['email']}
+📍 Delivery Address: {customer_info['address']}
+💳 Payment Method: {customer_info['payment_method']}
+👤 Username: {username}
+
+📖 BOOKS ORDERED:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
+
+        total_books = 0
+        for item in cart_items:
+            quantity = item.get('quantity', 1)
+            price = item.get('price', 0)
+            item_total = quantity * price
+            total_books += quantity
+            
+            message += f"""
+📚 {item.get('title', 'Unknown Title')}
+   ✍️  Author: {item.get('author', 'Unknown Author')}
+   💰 Price: ${price:.2f}
+   📦 Quantity: {quantity}
+   💵 Subtotal: ${item_total:.2f}
+   📝 Description: {item.get('description', 'No description available')[:50]}...
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
+
+        message += f"""
+
+💰 ORDER SUMMARY:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 Total Books: {total_books}
+💵 Total Amount: ${total_amount:.2f}
+
+✅ Status: Order Confirmed & Payment Processed
+🚚 Estimated Delivery: 3-5 Business Days
+
+Thank you for shopping with BookBazar! 📚✨
+"""
+
+        # Send the notification
+        sns.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject=f'📚 Order Confirmed - BookBazar (${total_amount:.2f})',
+            Message=message
+        )
+        logger.info(f"Order confirmation notification sent for user: {username}")
+        
+    except ClientError as e:
+        logger.error(f"Error sending order confirmation notification: {e}")
+
+def send_cart_update_notification(username, cart_items, action="updated"):
+    """Send notification when cart is updated with book details"""
+    try:
+        if not cart_items:
+            return
+            
+        message = f"""
+🛒 CART {action.upper()} - BookBazar
+
+👤 User: {username}
+📅 Time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+📚 CURRENT CART CONTENTS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
+
+        total_items = 0
+        total_value = 0
+        
+        for item in cart_items:
+            quantity = item.get('quantity', 1)
+            price = item.get('price', 0)
+            item_total = quantity * price
+            total_items += quantity
+            total_value += item_total
+            
+            message += f"""
+📖 {item.get('title', 'Unknown Title')}
+   ✍️  Author: {item.get('author', 'Unknown Author')}
+   💰 Price: ${price:.2f} each
+   📦 Quantity: {quantity}
+   💵 Subtotal: ${item_total:.2f}
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
+
+        message += f"""
+
+🛒 CART SUMMARY:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 Total Items: {total_items}
+💵 Cart Value: ${total_value:.2f}
+"""
+
+        # Send the notification
+        sns.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject=f'🛒 Cart {action.title()} - {username} (${total_value:.2f})',
+            Message=message
+        )
+        logger.info(f"Cart {action} notification sent for user: {username}")
+        
+    except ClientError as e:
+        logger.error(f"Error sending cart {action} notification: {e}")
+
 def find_book_by_id(book_id):
     """Find a book by its ID"""
     books = load_books()
@@ -200,9 +315,19 @@ def register():
             flash('Registration successful! Please login.', 'success')
             
             # Send notification about new user registration
+            registration_message = f"""
+👋 NEW USER REGISTRATION - BookBazar
+
+📅 Registration Date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+👤 Username: {username}
+🎉 Welcome to BookBazar!
+
+The user can now browse and purchase books from our collection.
+"""
+            
             send_notification(
-                'New User Registration - BookBazar',
-                f'New user registered: {username}'
+                '👋 New User Registration - BookBazar',
+                registration_message
             )
             
             return redirect(url_for('login'))
@@ -227,6 +352,12 @@ def login():
         if user and user.get('password') == password:
             session['username'] = username
             flash(f'Welcome back, {username}!', 'success')
+            
+            # Send login notification with current cart details if any
+            cart_items = get_user_cart(username)
+            if cart_items:
+                send_cart_update_notification(username, cart_items, "accessed after login")
+            
             return redirect(url_for('books'))
         else:
             flash('Invalid username or password!', 'error')
@@ -269,6 +400,9 @@ def add_to_cart(book_id):
             item['quantity'] += 1
             update_user_cart(username, cart)
             flash(f'Increased quantity of "{book["title"]}" in cart!', 'success')
+            
+            # Send cart update notification
+            send_cart_update_notification(username, cart, "updated")
             return redirect(url_for('books'))
     
     # Add new item to cart
@@ -278,6 +412,9 @@ def add_to_cart(book_id):
     update_user_cart(username, cart)
     
     flash(f'"{book["title"]}" added to cart!', 'success')
+    
+    # Send cart update notification
+    send_cart_update_notification(username, cart, "updated")
     return redirect(url_for('books'))
 
 # Cart page
@@ -320,6 +457,9 @@ def update_cart(book_id, action):
             break
     
     update_user_cart(username, cart)
+    
+    # Send cart update notification
+    send_cart_update_notification(username, cart, "updated")
     return redirect(url_for('cart'))
 
 # Checkout page
@@ -366,23 +506,16 @@ def process_checkout():
     # Process order (in real app, integrate with payment gateway)
     total = sum(item['price'] * item['quantity'] for item in cart_items)
     
-    # Send order notification
-    order_details = f"""
-    New Order Received - BookBazar
+    # Prepare customer info
+    customer_info = {
+        'name': name,
+        'email': email,
+        'address': address,
+        'payment_method': payment_method
+    }
     
-    Customer: {name}
-    Email: {email}
-    Address: {address}
-    Payment Method: {payment_method}
-    Total Amount: ${total:.2f}
-    
-    Items:
-    """
-    
-    for item in cart_items:
-        order_details += f"- {item['title']} x {item['quantity']} = ${item['price'] * item['quantity']:.2f}\n"
-    
-    send_notification('New Order - BookBazar', order_details)
+    # Send detailed order confirmation notification
+    send_order_confirmation_notification(username, cart_items, customer_info, total)
     
     # Clear cart after successful order
     update_user_cart(username, [])
