@@ -6,6 +6,7 @@ from botocore.exceptions import ClientError
 from decimal import Decimal
 import logging
 from datetime import datetime
+import pytz
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_change_in_production'
@@ -140,23 +141,16 @@ def update_user_cart(username, cart_items):
         logger.error(f"Error updating cart for {username}: {e}")
         return False
 
-def send_notification(subject, message):
-    """Send SNS notification"""
-    try:
-        sns.publish(
-            TopicArn=SNS_TOPIC_ARN,
-            Subject=subject,
-            Message=message
-        )
-        logger.info(f"Notification sent: {subject}")
-    except ClientError as e:
-        logger.error(f"Error sending notification: {e}")
+def get_local_time():
+    """Get current time in Indian timezone"""
+    india_tz = pytz.timezone('Asia/Kolkata')
+    return datetime.now(india_tz).strftime("%Y-%m-%d %H:%M:%S IST")
 
 def send_order_confirmation_notification(username, cart_items, customer_info, total_amount):
-    """Send detailed order confirmation notification"""
+    """Send detailed order confirmation notification ONLY when order is placed"""
     try:
-        # Generate order timestamp
-        order_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Generate order timestamp in Indian time
+        order_time = get_local_time()
         
         # Build detailed notification message
         message = f"""
@@ -214,58 +208,6 @@ Thank you for shopping with BookBazar! 📚✨
     except ClientError as e:
         logger.error(f"Error sending order confirmation notification: {e}")
 
-def send_cart_update_notification(username, cart_items, action="updated"):
-    """Send notification when cart is updated with book details"""
-    try:
-        if not cart_items:
-            return
-            
-        message = f"""
-🛒 CART {action.upper()} - BookBazar
-
-👤 User: {username}
-📅 Time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
-📚 CURRENT CART CONTENTS:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
-
-        total_items = 0
-        total_value = 0
-        
-        for item in cart_items:
-            quantity = item.get('quantity', 1)
-            price = item.get('price', 0)
-            item_total = quantity * price
-            total_items += quantity
-            total_value += item_total
-            
-            message += f"""
-📖 {item.get('title', 'Unknown Title')}
-   ✍️  Author: {item.get('author', 'Unknown Author')}
-   💰 Price: ${price:.2f} each
-   📦 Quantity: {quantity}
-   💵 Subtotal: ${item_total:.2f}
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
-
-        message += f"""
-
-🛒 CART SUMMARY:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📚 Total Items: {total_items}
-💵 Cart Value: ${total_value:.2f}
-"""
-
-        # Send the notification
-        sns.publish(
-            TopicArn=SNS_TOPIC_ARN,
-            Subject=f'🛒 Cart {action.title()} - {username} (${total_value:.2f})',
-            Message=message
-        )
-        logger.info(f"Cart {action} notification sent for user: {username}")
-        
-    except ClientError as e:
-        logger.error(f"Error sending cart {action} notification: {e}")
-
 def find_book_by_id(book_id):
     """Find a book by its ID"""
     books = load_books()
@@ -313,23 +255,6 @@ def register():
         # Register user
         if create_user_in_db(username, password):
             flash('Registration successful! Please login.', 'success')
-            
-            # Send notification about new user registration
-            registration_message = f"""
-👋 NEW USER REGISTRATION - BookBazar
-
-📅 Registration Date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-👤 Username: {username}
-🎉 Welcome to BookBazar!
-
-The user can now browse and purchase books from our collection.
-"""
-            
-            send_notification(
-                '👋 New User Registration - BookBazar',
-                registration_message
-            )
-            
             return redirect(url_for('login'))
         else:
             flash('Registration failed. Please try again.', 'error')
@@ -352,12 +277,6 @@ def login():
         if user and user.get('password') == password:
             session['username'] = username
             flash(f'Welcome back, {username}!', 'success')
-            
-            # Send login notification with current cart details if any
-            cart_items = get_user_cart(username)
-            if cart_items:
-                send_cart_update_notification(username, cart_items, "accessed after login")
-            
             return redirect(url_for('books'))
         else:
             flash('Invalid username or password!', 'error')
@@ -378,7 +297,7 @@ def books():
     cart_count = sum(item['quantity'] for item in cart_items)
     return render_template('books.html', books=books_data, cart_count=cart_count)
 
-# Add to cart route
+# Add to cart route - NO NOTIFICATION SENT HERE
 @app.route('/add_to_cart/<int:book_id>')
 def add_to_cart(book_id):
     if 'username' not in session:
@@ -400,9 +319,6 @@ def add_to_cart(book_id):
             item['quantity'] += 1
             update_user_cart(username, cart)
             flash(f'Increased quantity of "{book["title"]}" in cart!', 'success')
-            
-            # Send cart update notification
-            send_cart_update_notification(username, cart, "updated")
             return redirect(url_for('books'))
     
     # Add new item to cart
@@ -412,9 +328,6 @@ def add_to_cart(book_id):
     update_user_cart(username, cart)
     
     flash(f'"{book["title"]}" added to cart!', 'success')
-    
-    # Send cart update notification
-    send_cart_update_notification(username, cart, "updated")
     return redirect(url_for('books'))
 
 # Cart page
@@ -432,7 +345,7 @@ def cart():
     
     return render_template('cart.html', cart_items=cart_items, total=total)
 
-# Update cart quantity
+# Update cart quantity - NO NOTIFICATION SENT HERE
 @app.route('/update_cart/<int:book_id>/<action>')
 def update_cart(book_id, action):
     if 'username' not in session:
@@ -457,9 +370,6 @@ def update_cart(book_id, action):
             break
     
     update_user_cart(username, cart)
-    
-    # Send cart update notification
-    send_cart_update_notification(username, cart, "updated")
     return redirect(url_for('cart'))
 
 # Checkout page
@@ -479,7 +389,7 @@ def checkout():
     total = sum(item['price'] * item['quantity'] for item in cart_items)
     return render_template('checkout.html', cart_items=cart_items, total=total)
 
-# Process checkout
+# Process checkout - ONLY PLACE WHERE NOTIFICATION IS SENT
 @app.route('/process_checkout', methods=['POST'])
 def process_checkout():
     if 'username' not in session:
@@ -514,7 +424,7 @@ def process_checkout():
         'payment_method': payment_method
     }
     
-    # Send detailed order confirmation notification
+    # Send ONLY order confirmation notification (not cart updates)
     send_order_confirmation_notification(username, cart_items, customer_info, total)
     
     # Clear cart after successful order
