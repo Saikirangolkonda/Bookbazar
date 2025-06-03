@@ -17,15 +17,10 @@ logger = logging.getLogger(__name__)
 AWS_REGION = 'ap-south-1'
 SNS_TOPIC_ARN = 'arn:aws:sns:ap-south-1:686255965861:bookbazartopic'
 
-# SES Configuration - Replace with your verified email domain
-SES_FROM_EMAIL = 'bookbazar@yourdomain.com'  # Must be verified in SES
-# Note: For production, verify your domain in SES or verify individual email addresses
-
 # Initialize AWS clients
 try:
     dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
     sns = boto3.client('sns', region_name=AWS_REGION)
-    ses = boto3.client('ses', region_name=AWS_REGION)
     
     # Get table references
     users_table = dynamodb.Table('users')
@@ -144,41 +139,17 @@ def update_user_cart(username, cart_items):
         logger.error(f"Error updating cart for {username}: {e}")
         return False
 
-def send_notification(subject, message, email=None):
-    """Send SNS notification or SES email"""
+def send_notification(subject, message):
+    """Send SNS notification"""
     try:
-        if email:
-            # Send direct email using SES
-            ses.send_email(
-                Source=SES_FROM_EMAIL,
-                Destination={'ToAddresses': [email]},
-                Message={
-                    'Subject': {'Data': subject},
-                    'Body': {'Text': {'Data': message}}
-                }
-            )
-            logger.info(f"Email sent to: {email}")
-        else:
-            # Send to SNS topic (for admin notifications)
-            sns.publish(
-                TopicArn=SNS_TOPIC_ARN,
-                Subject=subject,
-                Message=message
-            )
-            logger.info(f"Topic notification sent: {subject}")
+        sns.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject=subject,
+            Message=message
+        )
+        logger.info(f"Notification sent: {subject}")
     except ClientError as e:
         logger.error(f"Error sending notification: {e}")
-        # Fallback: try SNS direct publish if SES fails
-        if email:
-            try:
-                sns.publish(
-                    Subject=f"{subject} - Customer: {email}",
-                    Message=f"Customer Email: {email}\n\n{message}",
-                    TopicArn=SNS_TOPIC_ARN
-                )
-                logger.info(f"Fallback SNS notification sent for {email}")
-            except ClientError as fallback_error:
-                logger.error(f"Fallback notification also failed: {fallback_error}")
 
 def find_book_by_id(book_id):
     """Find a book by its ID"""
@@ -227,6 +198,13 @@ def register():
         # Register user
         if create_user_in_db(username, password):
             flash('Registration successful! Please login.', 'success')
+            
+            # Send notification about new user registration
+            send_notification(
+                'New User Registration - BookBazar',
+                f'New user registered: {username}'
+            )
+            
             return redirect(url_for('login'))
         else:
             flash('Registration failed. Please try again.', 'error')
@@ -388,40 +366,8 @@ def process_checkout():
     # Process order (in real app, integrate with payment gateway)
     total = sum(item['price'] * item['quantity'] for item in cart_items)
     
-    # Send order confirmation email to customer
-    customer_message = f"""
-    Dear {name},
-    
-    Thank you for your order at BookBazar!
-    
-    Order Details:
-    Total Amount: ${total:.2f}
-    
-    Items Ordered:
-    """
-    
-    for item in cart_items:
-        customer_message += f"- {item['title']} by {item['author']} x {item['quantity']} = ${item['price'] * item['quantity']:.2f}\n"
-    
-    customer_message += f"""
-    
-    Shipping Address: {address}
-    Payment Method: {payment_method}
-    
-    Your order will be processed within 24 hours.
-    
-    Thank you for shopping with BookBazar!
-    """
-    
-    # Send email notification to customer
-    send_notification(
-        'Order Confirmation - BookBazar',
-        customer_message,
-        email
-    )
-    
-    # Send order notification to admin/topic
-    admin_message = f"""
+    # Send order notification
+    order_details = f"""
     New Order Received - BookBazar
     
     Customer: {name}
@@ -434,9 +380,9 @@ def process_checkout():
     """
     
     for item in cart_items:
-        admin_message += f"- {item['title']} x {item['quantity']} = ${item['price'] * item['quantity']:.2f}\n"
+        order_details += f"- {item['title']} x {item['quantity']} = ${item['price'] * item['quantity']:.2f}\n"
     
-    send_notification('New Order - BookBazar', admin_message)
+    send_notification('New Order - BookBazar', order_details)
     
     # Clear cart after successful order
     update_user_cart(username, [])
