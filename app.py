@@ -15,10 +15,12 @@ logger = logging.getLogger(__name__)
 
 # AWS Configuration
 AWS_REGION = 'ap-south-1'
+SNS_TOPIC_ARN = 'arn:aws:sns:ap-south-1:686255965861:bookbazartopic'
 
 # Initialize AWS clients
 try:
     dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
+    sns = boto3.client('sns', region_name=AWS_REGION)
     
     # Get table references
     users_table = dynamodb.Table('users')
@@ -137,6 +139,18 @@ def update_user_cart(username, cart_items):
         logger.error(f"Error updating cart for {username}: {e}")
         return False
 
+def send_notification(subject, message):
+    """Send SNS notification"""
+    try:
+        sns.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject=subject,
+            Message=message
+        )
+        logger.info(f"Notification sent: {subject}")
+    except ClientError as e:
+        logger.error(f"Error sending notification: {e}")
+
 def find_book_by_id(book_id):
     """Find a book by its ID"""
     books = load_books()
@@ -184,6 +198,13 @@ def register():
         # Register user
         if create_user_in_db(username, password):
             flash('Registration successful! Please login.', 'success')
+            
+            # Send notification about new user registration
+            send_notification(
+                'New User Registration - BookBazar',
+                f'New user registered: {username}'
+            )
+            
             return redirect(url_for('login'))
         else:
             flash('Registration failed. Please try again.', 'error')
@@ -342,22 +363,35 @@ def process_checkout():
         flash('All fields are required!', 'error')
         return redirect(url_for('checkout'))
 
-    # Calculate total
+    # Process order (in real app, integrate with payment gateway)
     total = sum(item['price'] * item['quantity'] for item in cart_items)
+    
+    # Send order notification
+    order_details = f"""
+    New Order Received - BookBazar
+    
+    Customer: {name}
+    Email: {email}
+    Address: {address}
+    Payment Method: {payment_method}
+    Total Amount: ${total:.2f}
+    
+    Items:
+    """
+    
+    for item in cart_items:
+        order_details += f"- {item['title']} x {item['quantity']} = ${item['price'] * item['quantity']:.2f}\n"
+    
+    send_notification('New Order - BookBazar', order_details)
     
     # Clear cart after successful order
     update_user_cart(username, [])
-    
-    # Create success message
-    success_message = f'Order confirmed! Your order for {len(cart_items)} book(s) has been processed successfully.'
-    flash(success_message, 'success')
     
     # Redirect to confirmation with order details
     return render_template('confirmation.html', 
                          order_total=total, 
                          customer_name=name,
-                         customer_email=email,
-                         books_ordered=cart_items)
+                         customer_email=email)
 
 # Library route (alternative view) - requires login
 @app.route('/library')
