@@ -1,0 +1,13 @@
+Flask
+boto3
+botocore
+Werkzeug
+Jinja2
+MarkupSafe
+itsdangerous
+click
+python-dateutil
+jmespath
+s3transfer
+six
+urllib3
