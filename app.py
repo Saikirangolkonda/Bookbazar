@@ -2,13 +2,16 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 import json
 import os
 import boto3
-from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
-import hashlib
-from datetime import datetime
+from decimal import Decimal
+import logging
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_change_in_production'
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # AWS Configuration
 AWS_REGION = 'ap-south-1'
@@ -23,120 +26,10 @@ try:
     users_table = dynamodb.Table('users')
     carts_table = dynamodb.Table('carts')
     
-    print("AWS services initialized successfully")
+    logger.info("AWS services initialized successfully")
 except Exception as e:
-    print(f"Error initializing AWS services: {e}")
-    dynamodb = None
-    sns = None
-
-def hash_password(password):
-    """Hash password using SHA-256"""
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def send_sns_notification(subject, message):
-    """Send notification via SNS"""
-    try:
-        if sns:
-            response = sns.publish(
-                TopicArn=SNS_TOPIC_ARN,
-                Subject=subject,
-                Message=message
-            )
-            print(f"SNS notification sent: {response['MessageId']}")
-            return True
-    except Exception as e:
-        print(f"Error sending SNS notification: {e}")
-    return False
-
-def create_user(username, password):
-    """Create a new user in DynamoDB"""
-    try:
-        hashed_password = hash_password(password)
-        response = users_table.put_item(
-            Item={
-                'username': username,
-                'password': hashed_password,
-                'created_at': datetime.now().isoformat(),
-                'status': 'active'
-            },
-            ConditionExpression='attribute_not_exists(username)'
-        )
-        
-        # Send welcome notification
-        send_sns_notification(
-            subject="New User Registration - BookBazar",
-            message=f"New user registered: {username} at {datetime.now().isoformat()}"
-        )
-        
-        return True
-    except ClientError as e:
-        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-            return False  # Username already exists
-        print(f"Error creating user: {e}")
-        return False
-    except Exception as e:
-        print(f"Error creating user: {e}")
-        return False
-
-def verify_user(username, password):
-    """Verify user credentials"""
-    try:
-        response = users_table.get_item(
-            Key={'username': username}
-        )
-        
-        if 'Item' in response:
-            stored_password = response['Item']['password']
-            hashed_password = hash_password(password)
-            return stored_password == hashed_password
-        return False
-    except Exception as e:
-        print(f"Error verifying user: {e}")
-        return False
-
-def get_user_cart(username):
-    """Get user's cart from DynamoDB"""
-    try:
-        response = carts_table.get_item(
-            Key={'username': username}
-        )
-        
-        if 'Item' in response:
-            return response['Item'].get('cart_items', [])
-        return []
-    except Exception as e:
-        print(f"Error getting user cart: {e}")
-        return []
-
-def save_user_cart(username, cart_items):
-    """Save user's cart to DynamoDB"""
-    try:
-        carts_table.put_item(
-            Item={
-                'username': username,
-                'cart_items': cart_items,
-                'updated_at': datetime.now().isoformat()
-            }
-        )
-        return True
-    except Exception as e:
-        print(f"Error saving user cart: {e}")
-        return False
-
-def clear_user_cart(username):
-    """Clear user's cart in DynamoDB"""
-    try:
-        carts_table.put_item(
-            Item={
-                'username': username,
-                'cart_items': [],
-                'updated_at': datetime.now().isoformat()
-            }
-        )
-        return True
-    except Exception as e:
-        print(f"Error clearing user cart: {e}")
-        return False
+    logger.error(f"Error initializing AWS services: {e}")
+    raise
 
 def load_books():
     """Load books data from JSON file"""
@@ -181,6 +74,83 @@ def load_books():
             }
         ]
 
+def decimal_to_float(obj):
+    """Convert DynamoDB Decimal to float for JSON serialization"""
+    if isinstance(obj, list):
+        return [decimal_to_float(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: decimal_to_float(value) for key, value in obj.items()}
+    elif isinstance(obj, Decimal):
+        return float(obj)
+    return obj
+
+def get_user_from_db(username):
+    """Get user from DynamoDB"""
+    try:
+        response = users_table.get_item(Key={'username': username})
+        return response.get('Item')
+    except ClientError as e:
+        logger.error(f"Error getting user {username}: {e}")
+        return None
+
+def create_user_in_db(username, password):
+    """Create user in DynamoDB"""
+    try:
+        users_table.put_item(
+            Item={
+                'username': username,
+                'password': password
+            },
+            ConditionExpression='attribute_not_exists(username)'
+        )
+        return True
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+            return False  # User already exists
+        logger.error(f"Error creating user {username}: {e}")
+        return False
+
+def get_user_cart(username):
+    """Get user's cart from DynamoDB"""
+    try:
+        response = carts_table.get_item(Key={'username': username})
+        if 'Item' in response:
+            cart_data = response['Item']
+            return decimal_to_float(cart_data.get('items', []))
+        return []
+    except ClientError as e:
+        logger.error(f"Error getting cart for {username}: {e}")
+        return []
+
+def update_user_cart(username, cart_items):
+    """Update user's cart in DynamoDB"""
+    try:
+        # Convert floats to Decimal for DynamoDB
+        decimal_items = json.loads(json.dumps(cart_items), parse_float=Decimal)
+        
+        carts_table.put_item(
+            Item={
+                'username': username,
+                'items': decimal_items
+            }
+        )
+        return True
+    except ClientError as e:
+        logger.error(f"Error updating cart for {username}: {e}")
+        return False
+
+def send_notification(subject, message):
+    """Send SNS notification"""
+    try:
+        sns.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject=subject,
+            Message=message
+        )
+        logger.info(f"Notification sent: {subject}")
+    except ClientError as e:
+        logger.error(f"Error sending notification: {e}")
+
 def find_book_by_id(book_id):
     """Find a book by its ID"""
     books = load_books()
@@ -212,20 +182,32 @@ def register():
             flash('Username and password are required!', 'error')
             return render_template('register.html')
 
-        if len(password) < 6:
-            flash('Password must be at least 6 characters long!', 'error')
+        if len(password) < 1:
+            flash('Password cannot be empty!', 'error')
             return render_template('register.html')
 
         if password != confirm_password:
             flash('Passwords do not match!', 'error')
             return render_template('register.html')
 
+        # Check if user already exists
+        if get_user_from_db(username):
+            flash('Username already exists!', 'error')
+            return render_template('register.html')
+
         # Register user
-        if create_user(username, password):
+        if create_user_in_db(username, password):
             flash('Registration successful! Please login.', 'success')
+            
+            # Send notification about new user registration
+            send_notification(
+                'New User Registration - BookBazar',
+                f'New user registered: {username}'
+            )
+            
             return redirect(url_for('login'))
         else:
-            flash('Username already exists or registration failed!', 'error')
+            flash('Registration failed. Please try again.', 'error')
             return render_template('register.html')
 
     return render_template('register.html')
@@ -241,16 +223,10 @@ def login():
             flash('Username and password are required!', 'error')
             return render_template('login.html')
 
-        if verify_user(username, password):
+        user = get_user_from_db(username)
+        if user and user.get('password') == password:
             session['username'] = username
             flash(f'Welcome back, {username}!', 'success')
-            
-            # Send login notification
-            send_sns_notification(
-                subject="User Login - BookBazar",
-                message=f"User {username} logged in at {datetime.now().isoformat()}"
-            )
-            
             return redirect(url_for('books'))
         else:
             flash('Invalid username or password!', 'error')
@@ -291,7 +267,7 @@ def add_to_cart(book_id):
     for item in cart:
         if item['id'] == book_id:
             item['quantity'] += 1
-            save_user_cart(username, cart)
+            update_user_cart(username, cart)
             flash(f'Increased quantity of "{book["title"]}" in cart!', 'success')
             return redirect(url_for('books'))
     
@@ -299,7 +275,7 @@ def add_to_cart(book_id):
     cart_item = book.copy()
     cart_item['quantity'] = 1
     cart.append(cart_item)
-    save_user_cart(username, cart)
+    update_user_cart(username, cart)
     
     flash(f'"{book["title"]}" added to cart!', 'success')
     return redirect(url_for('books'))
@@ -343,7 +319,7 @@ def update_cart(book_id, action):
                 flash(f'"{item["title"]}" removed from cart!', 'info')
             break
     
-    save_user_cart(username, cart)
+    update_user_cart(username, cart)
     return redirect(url_for('cart'))
 
 # Checkout page
@@ -387,33 +363,29 @@ def process_checkout():
         flash('All fields are required!', 'error')
         return redirect(url_for('checkout'))
 
-    # Process order
+    # Process order (in real app, integrate with payment gateway)
     total = sum(item['price'] * item['quantity'] for item in cart_items)
     
-    # Send order notification via SNS
+    # Send order notification
     order_details = f"""
-    New Order Placed - BookBazar
+    New Order Received - BookBazar
     
     Customer: {name}
     Email: {email}
-    Username: {username}
-    Total: ${total:.2f}
+    Address: {address}
     Payment Method: {payment_method}
-    Order Time: {datetime.now().isoformat()}
+    Total Amount: ${total:.2f}
     
     Items:
     """
     
     for item in cart_items:
-        order_details += f"- {item['title']} by {item['author']} (Qty: {item['quantity']}, Price: ${item['price']:.2f})\n"
+        order_details += f"- {item['title']} x {item['quantity']} = ${item['price'] * item['quantity']:.2f}\n"
     
-    send_sns_notification(
-        subject="New Order - BookBazar",
-        message=order_details
-    )
+    send_notification('New Order - BookBazar', order_details)
     
     # Clear cart after successful order
-    clear_user_cart(username)
+    update_user_cart(username, [])
     
     # Redirect to confirmation with order details
     return render_template('confirmation.html', 
@@ -488,48 +460,13 @@ def terms():
 def privacy():
     return render_template('privacy.html')
 
-# Health check endpoint for AWS
-@app.route('/health')
-def health_check():
-    try:
-        # Test DynamoDB connection
-        users_table.describe_table()
-        carts_table.describe_table()
-        return jsonify({
-            'status': 'healthy',
-            'timestamp': datetime.now().isoformat(),
-            'services': ['DynamoDB', 'SNS']
-        }), 200
-    except Exception as e:
-        return jsonify({
-            'status': 'unhealthy',
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
 # Logout
 @app.route('/logout')
 def logout():
     username = session.get('username', 'User')
     session.clear()
     flash(f'Goodbye, {username}! You have been logged out.', 'info')
-    
-    # Send logout notification
-    send_sns_notification(
-        subject="User Logout - BookBazar",
-        message=f"User {username} logged out at {datetime.now().isoformat()}"
-    )
-    
     return redirect(url_for('home'))
-
-# # Error handlers
-# @app.errorhandler(404)
-# def not_found(error):
-#     return render_template('404.html'), 404
-
-# @app.errorhandler(500)
-# def internal_error(error):
-#     return render_template('500.html'), 500
 
 if __name__ == '__main__':
     # Create data directory if it doesn't exist
