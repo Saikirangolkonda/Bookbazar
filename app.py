@@ -5,7 +5,6 @@ import boto3
 from botocore.exceptions import ClientError
 from decimal import Decimal
 import logging
-from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_change_in_production'
@@ -16,12 +15,10 @@ logger = logging.getLogger(__name__)
 
 # AWS Configuration
 AWS_REGION = 'ap-south-1'
-SNS_TOPIC_ARN = 'arn:aws:sns:ap-south-1:686255965861:bookbazartopic'
 
 # Initialize AWS clients
 try:
     dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
-    sns = boto3.client('sns', region_name=AWS_REGION)
     
     # Get table references
     users_table = dynamodb.Table('users')
@@ -140,83 +137,6 @@ def update_user_cart(username, cart_items):
         logger.error(f"Error updating cart for {username}: {e}")
         return False
 
-def send_notification(subject, message):
-    """Send SNS notification"""
-    try:
-        sns.publish(
-            TopicArn=SNS_TOPIC_ARN,
-            Subject=subject,
-            Message=message
-        )
-        logger.info(f"Notification sent: {subject}")
-    except ClientError as e:
-        logger.error(f"Error sending notification: {e}")
-
-def send_order_confirmation_notification(customer_info, cart_items, total):
-    """Send detailed order confirmation notification with book details"""
-    try:
-        # Generate order ID based on current timestamp
-        order_id = f"ORD-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        
-        # Create detailed order confirmation message
-        subject = f"Order Confirmed - BookBazar (Order #{order_id})"
-        
-        message = f"""
-ORDER CONFIRMATION - BOOKBAZAR
-================================
-
-Order ID: {order_id}
-Order Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-CUSTOMER DETAILS:
------------------
-Name: {customer_info['name']}
-Email: {customer_info['email']}
-Username: {customer_info['username']}
-Delivery Address: {customer_info['address']}
-Payment Method: {customer_info['payment_method']}
-
-BOOKS ORDERED:
---------------"""
-
-        # Add each book with detailed information
-        for item in cart_items:
-            item_total = item['price'] * item['quantity']
-            message += f"""
-📚 {item['title']}
-   Author: {item['author']}
-   Quantity: {item['quantity']}
-   Price per book: ${item['price']:.2f}
-   Subtotal: ${item_total:.2f}
-   ---"""
-
-        message += f"""
-
-ORDER SUMMARY:
---------------
-Total Books: {sum(item['quantity'] for item in cart_items)}
-Total Amount: ${total:.2f}
-
-STATUS: ✅ CONFIRMED
-Your books are being prepared for shipment!
-
-Thank you for shopping with BookBazar!
-"""
-
-        # Send the notification
-        sns.publish(
-            TopicArn=SNS_TOPIC_ARN,
-            Subject=subject,
-            Message=message
-        )
-        
-        logger.info(f"Order confirmation notification sent for Order #{order_id}")
-        return order_id
-        
-    except ClientError as e:
-        logger.error(f"Error sending order confirmation notification: {e}")
-        return None
-
 def find_book_by_id(book_id):
     """Find a book by its ID"""
     books = load_books()
@@ -264,13 +184,6 @@ def register():
         # Register user
         if create_user_in_db(username, password):
             flash('Registration successful! Please login.', 'success')
-            
-            # Send notification about new user registration
-            send_notification(
-                'New User Registration - BookBazar',
-                f'New user registered: {username}'
-            )
-            
             return redirect(url_for('login'))
         else:
             flash('Registration failed. Please try again.', 'error')
@@ -432,25 +345,11 @@ def process_checkout():
     # Calculate total
     total = sum(item['price'] * item['quantity'] for item in cart_items)
     
-    # Prepare customer information
-    customer_info = {
-        'name': name,
-        'email': email,
-        'username': username,
-        'address': address,
-        'payment_method': payment_method
-    }
-    
-    # Send detailed order confirmation notification with all book details
-    order_id = send_order_confirmation_notification(customer_info, cart_items, total)
-    
     # Clear cart after successful order
     update_user_cart(username, [])
     
-    # Create success message with order details
-    success_message = f'Order confirmed! Order ID: {order_id or "Processing"}. '
-    success_message += f'Confirmation notification sent for {len(cart_items)} book(s).'
-    
+    # Create success message
+    success_message = f'Order confirmed! Your order for {len(cart_items)} book(s) has been processed successfully.'
     flash(success_message, 'success')
     
     # Redirect to confirmation with order details
@@ -458,7 +357,6 @@ def process_checkout():
                          order_total=total, 
                          customer_name=name,
                          customer_email=email,
-                         order_id=order_id,
                          books_ordered=cart_items)
 
 # Library route (alternative view) - requires login
